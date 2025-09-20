@@ -1,0 +1,56 @@
+{
+  "areas": [
+    {
+      "id": "hnd_bay",
+      "name": "HND Tokyo Bay Corridor",
+      "lamin": 35.5,
+      "lamax": 35.63,
+      "lomin": 139.74,
+      "lomax": 139.9,
+      "camera": {
+        "lon": 139.82,
+        "lat": 35.57,
+        "alt": 3000
+      }
+    },
+    {
+      "id": "nrt_east",
+      "name": "NRT East/South",
+      "lamin": 35.7,
+      "lamax": 35.9,
+      "lomin": 140.25,
+      "lomax": 140.45,
+      "camera": {
+        "lon": 140.35,
+        "lat": 35.8,
+        "alt": 6000
+      }
+    },
+    {
+      "id": "tma_west",
+      "name": "Tokyo TMA West",
+      "lamin": 35.4,
+      "lamax": 35.7,
+      "lomin": 139.3,
+      "lomax": 139.6,
+      "camera": {
+        "lon": 139.45,
+        "lat": 35.55,
+        "alt": 7000
+      }
+    },
+    {
+      "id": "musashi_kosugi_53392592",
+      "name": "Musashi-Kosugi (3rd mesh 53392592)",
+      "lamin": 35.575,
+      "lamax": 35.5833333333,
+      "lomin": 139.65,
+      "lomax": 139.6625,
+      "camera": {
+        "lon": 139.656,
+        "lat": 35.579,
+        "alt": 1500
+      }
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+
+html, body, #c { width:100%; height:100%; margin:0; padding:0; }
+#toolbar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font: 14px/1.4 -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Noto Sans JP, sans-serif;
+}
+#toolbar .group { display:inline-block; margin-right:16px; vertical-align: middle; }
+#toolbar .group.small { opacity: 0.8; }
+#toolbar label { margin-right:6px; }
+#toolbar select, #toolbar input, #toolbar button { font-size: 13px; }
+#toolbar button { margin-left: 4px; }

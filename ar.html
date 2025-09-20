@@ -1,0 +1,216 @@
+﻿<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Flight 3D — WebXR (Quest3)</title>
+  <style>
+    html,body{margin:0;height:100%;background:#000;color:#e5e7eb;font-family:system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif}
+    #hud{position:fixed;top:8px;left:8px;right:8px;display:flex;gap:8px;flex-wrap:wrap;z-index:10}
+    .card{background:rgba(0,0,0,.55);backdrop-filter:blur(6px);padding:8px 10px;border-radius:10px;font-size:12px;display:flex;gap:8px;align-items:center}
+    .card input,.card select{background:#0f1a2a;color:#e5e7eb;border:1px solid #334155;border-radius:6px;padding:4px 6px}
+    .btn{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:6px 10px;cursor:pointer}
+    .hint{font-size:11px;color:#9ca3af}
+  </style>
+</head>
+<body>
+<div id="hud">
+  <div class="card">
+    <label>Area</label>
+    <select id="area"></select>
+    <button class="btn" id="go">Go</button>
+    <label>Poll(s)</label>
+    <input id="poll" type="number" value="5" min="3" max="20" step="1">
+    <button class="btn" id="start">Start</button>
+    <button class="btn" id="stop">Stop</button>
+  </div>
+  <div class="card">
+    <label>Find</label><input id="ap" placeholder="HND / RJTT / KIX …" style="width:120px">
+    <label>Lat</label><input id="lat" type="number" step="0.0001" style="width:100px">
+    <label>Lon</label><input id="lon" type="number" step="0.0001" style="width:100px">
+    <label>W(km)</label><input id="wkm" type="number" value="60" style="width:70px">
+    <label>H(km)</label><input id="hkm" type="number" value="40" style="width:70px">
+    <button class="btn" id="use">Use</button>
+  </div>
+  <div class="card">
+    <label>Scale (1m = <span id="scaleLabel">1.0</span> km)</label>
+    <input id="scale" type="range" min="0.1" max="10" value="1" step="0.1">
+    <button class="btn" id="modeMini">Mini</button>
+    <button class="btn" id="modeLife">Life-size</button>
+    <span class="hint">タップで設置 → スケール調整 → Start</span>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'https://unpkg.com/three@0.159.0/build/three.module.js';
+import { ARButton } from 'https://unpkg.com/three@0.159.0/examples/jsm/webxr/ARButton.js';
+import { GLTFLoader } from 'https://unpkg.com/three@0.159.0/examples/jsm/loaders/GLTFLoader.js';
+
+// ---- API base（同一オリジン想定）----
+const API_BASE = '';
+
+// ---- UI refs ----
+const $area = document.getElementById('area');
+const $go = document.getElementById('go');
+const $ap = document.getElementById('ap');
+const $lat = document.getElementById('lat');
+const $lon = document.getElementById('lon');
+const $wkm = document.getElementById('wkm');
+const $hkm = document.getElementById('hkm');
+const $use = document.getElementById('use');
+const $poll = document.getElementById('poll');
+const $start = document.getElementById('start');
+const $stop = document.getElementById('stop');
+const $scale = document.getElementById('scale');
+const $scaleLabel = document.getElementById('scaleLabel');
+const $modeMini = document.getElementById('modeMini');
+const $modeLife = document.getElementById('modeLife');
+
+let worldScaleKm = 1.0; // 1m = 1km
+$scale.addEventListener('input', ()=>{ worldScaleKm = parseFloat($scale.value); $scaleLabel.textContent = worldScaleKm.toFixed(1); });
+$modeMini.addEventListener('click', ()=>{ worldScaleKm = 1.0; $scale.value = 1.0; $scaleLabel.textContent='1.0'; });
+$modeLife.addEventListener('click', ()=>{ worldScaleKm = 0.001; $scale.value = 0.001; $scaleLabel.textContent='0.001'; });
+
+// ---- Airport lookup ----
+const AIRPORTS = {
+  HND:{lat:35.5494, lon:139.7798}, RJTT:{lat:35.5494, lon:139.7798},
+  NRT:{lat:35.7719, lon:140.3929}, RJAA:{lat:35.7719, lon:140.3929},
+  KIX:{lat:34.4273, lon:135.2440}, RJBB:{lat:34.4273, lon:135.2440},
+  NGO:{lat:34.8584, lon:136.8048}, RJGG:{lat:34.8584, lon:136.8048},
+  CTS:{lat:42.7752, lon:141.6923}, RJCC:{lat:42.7752, lon:141.6923},
+  FUK:{lat:33.5859, lon:130.4500}, RJFF:{lat:33.5859, lon:130.4500},
+  OKA:{lat:26.1958, lon:127.6460}, ROAH:{lat:26.1958, lon:127.6460},
+  ITM:{lat:34.7855, lon:135.4382}, RJOO:{lat:34.7855, lon:135.4382}
+};
+$ap.addEventListener('change', ()=>{
+  const k=($ap.value||'').trim().toUpperCase(), ap=AIRPORTS[k];
+  if(ap){ $lat.value=ap.lat.toFixed(6); $lon.value=ap.lon.toFixed(6); if(!$wkm.value)$wkm.value=80; if(!$hkm.value)$hkm.value=60; }
+});
+
+// ---- helpers ----
+function bboxFromCenter(lat, lon, wKm, hKm) {
+  const dLat = (hKm/2)/110.574;
+  const dLon = (wKm/2)/(111.320*Math.cos(lat*Math.PI/180));
+  return { lamin: lat-dLat, lamax: lat+dLat, lomin: lon-dLon, lomax: lon+dLon };
+}
+function lonLatToLocal(lon, lat, lon0, lat0) {
+  const M = 111320, cos = Math.cos(lat0*Math.PI/180);
+  const x = (lon-lon0)*M*cos, z = (lat-lat0)*M;
+  return new THREE.Vector3(x/(1000*worldScaleKm), 0, z/(1000*worldScaleKm));
+}
+
+// ---- XR renderer ----
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+renderer.xr.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const sessionInit = { requiredFeatures:['hit-test'], optionalFeatures:['dom-overlay','hand-tracking','layers'], domOverlay:{ root: document.getElementById('hud') } };
+document.body.appendChild(ARButton.createButton(renderer, sessionInit));
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera();
+scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.0));
+const key = new THREE.DirectionalLight(0xffffff, 0.8); key.position.set(1,2,1); scene.add(key);
+
+// 置き場所（アンカー）とミニチュア
+const root = new THREE.Group(); scene.add(root);
+const grid = new THREE.GridHelper(2, 20, 0x66ccff, 0x224466); grid.position.y = 0.002; root.add(grid);
+
+// 任意：軽量ミニ都市（あれば）
+try {
+  const gltf = await new GLTFLoader().loadAsync('/assets/mini_city.glb');
+  gltf.scene.scale.setScalar(1); root.add(gltf.scene);
+} catch(e){ console.log('mini_city.glb not found: grid only'); }
+
+// ---- AR hit-test placement ----
+let refSpace = null, hitTestSource = null, placed = false;
+renderer.xr.addEventListener('sessionstart', async ()=> {
+  const session = renderer.xr.getSession();
+  const viewerSpace = await session.requestReferenceSpace('viewer');
+  hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+  refSpace = await session.requestReferenceSpace('local');
+  placed = false;
+});
+renderer.setAnimationLoop((t, frame)=>{
+  if(!frame || !hitTestSource || placed) { renderer.render(scene, camera); return; }
+  const hits = frame.getHitTestResults(hitTestSource);
+  if(hits.length){ // テーブルなどに吸着
+    const pose = hits[0].getPose(refSpace);
+    root.position.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
+    root.quaternion.copy(pose.transform.orientation);
+  }
+  renderer.render(scene, camera);
+});
+// タップで固定
+window.addEventListener('click', ()=>{ placed = true; });
+
+// ---- Presets ----
+async function loadPresets(){
+  const r = await fetch(`${API_BASE}/api/presets`); const cfg = await r.json();
+  let areas=[]; if(Array.isArray(cfg.areas)) areas=cfg.areas; else if(Array.isArray(cfg)) areas=cfg;
+  else if(cfg && typeof cfg==='object'){ for(const [id,p] of Object.entries(cfg)){ if(p?.lamin!=null) areas.push({id,name:p.name||id,...p}); } }
+  $area.innerHTML=''; for (const a of areas){ const opt = document.createElement('option'); opt.value=a.id; opt.textContent=a.name; $area.appendChild(opt); }
+}
+await loadPresets();
+
+// ---- Area Go / Custom Use ----
+let currentBBox=null, centerLon=139.82, centerLat=35.57;
+function flyToArea(a){
+  if(!a) return; currentBBox={ lamin:a.lamin, lamax:a.lamax, lomin:a.lomin, lomax:a.lomax };
+  centerLon=(a.lomin+a.lomax)/2; centerLat=(a.lamin+a.lamax)/2;
+}
+$go.addEventListener('click', ()=>{
+  const id=$area.value; const a=(window.FLIGHT3D_PRESETS||[]).find(x=>x.id===id);
+  if(a) flyToArea(a);
+});
+$use.addEventListener('click', ()=>{
+  const lat=Number($lat.value), lon=Number($lon.value), w=Number($wkm.value||60), h=Number($hkm.value||40);
+  if(Number.isNaN(lat)||Number.isNaN(lon)) return alert('Lat/Lon を数値で');
+  const b=bboxFromCenter(lat,lon,w,h); flyToArea({ ...b });
+});
+
+// ---- Aircraft layer ----
+const MAGENTA = 0xe6007e;
+const planeMat = new THREE.MeshStandardMaterial({ color: MAGENTA, metalness:0.2, roughness:0.6 });
+const planeGeo = new THREE.SphereGeometry(0.01, 12, 12); // 直径2cm
+
+const planes = new Map(); // icao24 -> Mesh
+function setPlane(icao24, lon, lat){
+  const v = lonLatToLocal(lon, lat, centerLon, centerLat);
+  let m = planes.get(icao24);
+  if(!m){ m = new THREE.Mesh(planeGeo, planeMat); m.position.set(v.x, 0.02, v.z); root.add(m); planes.set(icao24, m); }
+  else { m.position.set(v.x, 0.02, v.z); }
+  return m;
+}
+function gcPlanes(seen){
+  for(const [id,m] of Array.from(planes.entries())){
+    if(!seen.has(id)){ root.remove(m); m.geometry.dispose(); planes.delete(id); }
+  }
+}
+
+// ---- OpenSky polling ----
+let timer=null;
+async function fetchStates(){
+  if(!currentBBox) return;
+  const qs=new URLSearchParams(currentBBox).toString();
+  let r=await fetch(`${API_BASE}/api/opensky?${qs}`); if(!r.ok) r=await fetch(`${API_BASE}/api/states?${qs}`);
+  if(!r.ok) return;
+  const data=await r.json();
+  const seen=new Set();
+  for(const s of (data.states||[])){
+    const id=s[0], lon=s[5], lat=s[6]; if(lon==null||lat==null) continue;
+    setPlane(id, lon, lat); seen.add(id);
+  }
+  gcPlanes(seen);
+}
+function start(){ stop(); const sec=Math.max(3, Math.min(20, Number($poll.value||5))); timer=setInterval(fetchStates, sec*1000); fetchStates(); }
+function stop(){ if(timer) clearInterval(timer), timer=null; }
+$start.addEventListener('click', start);
+$stop.addEventListener('click', stop);
+
+// 初期: HND湾上を想定
+flyToArea({ lamin:35.50, lamax:35.63, lomin:139.74, lomax:139.90 });
+
+</script>
+</body>
+</html>

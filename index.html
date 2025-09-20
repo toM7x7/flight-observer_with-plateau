@@ -1,0 +1,54 @@
+
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Flight 3D — PLATEAU × OpenSky</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="preconnect" href="https://cesium.com">
+  <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Widgets/widgets.css">
+</head>
+<body>
+  <div id="toolbar">
+    <div class="group">
+      <label>Area</label>
+      <select id="areaSelect"></select>
+      <button id="goBtn">Go</button>
+      <button id="hotBtn" title="Hot cells (Top)">Hot</button>
+    </div>
+    <div class="group">
+      <label>Find</label>
+      <input id="apLookup" placeholder="HND / RJTT / KIX / RJBB" style="width:120px">
+      <label>Lat</label><input id="lat" type="number" step="0.0001" style="width:100px">
+      <label>Lon</label><input id="lon" type="number" step="0.0001" style="width:100px">
+      <label>W(km)</label><input id="wkm" type="number" min="1" value="60" style="width:70px">
+      <label>H(km)</label><input id="hkm" type="number" min="1" value="40" style="width:70px">
+      <button id="useCustom">Use</button>
+      <button id="saveCustom">Save</button>
+    </div>
+    <div class="group">
+      <label>Buildings</label> <label><input id="toggleBuildings" type="checkbox" checked/> show</label>
+    </div>
+    <div class="group">
+      <label>Poll(s)</label>
+      <input id="pollSec" type="number" value="5" min="3" max="20" step="1" />
+      <button id="startBtn">Start</button>
+      <button id="stopBtn">Stop</button>
+    </div>
+    <div class="group">
+      <label><input id="useModel" type="checkbox" /> use model.glb</label>
+      <label><input id="showTrails" type="checkbox" checked /> trails</label>
+    </div>
+    <div class="group small">
+      Mode: <span id="modeText">loading...</span>
+    </div>
+  </div>
+  <div id="c"></div>
+
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Cesium.js"></script>
+  <script src="config.js"></script>
+  <script type="module" src="app.js"></script>
+<footer style="position:fixed;left:8px;right:8px;bottom:6px;font-size:11px;color:#9ca3af;">Data: © OpenStreetMap contributors. Flight data © OpenSky Network. 3D buildings: PLATEAU (via Cesium ion) or local 3D Tiles.</footer>
+</body>
+</html>
