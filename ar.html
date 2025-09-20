@@ -107,6 +107,33 @@ document.body.appendChild(renderer.domElement);
 const sessionInit = { requiredFeatures:['hit-test'], optionalFeatures:['dom-overlay','hand-tracking','layers'], domOverlay:{ root: document.getElementById('hud') } };
 document.body.appendChild(ARButton.createButton(renderer, sessionInit));
 
+let xrSession = null;
+async function enterAR() {
+  try {
+    if (!navigator.xr) {
+      alert('WebXR not available on this browser');
+      return;
+    }
+    if (renderer.xr.isPresenting) return;
+    xrSession = await navigator.xr.requestSession('immersive-ar', sessionInit);
+    xrSession.addEventListener('end', () => { xrSession = null; });
+    await renderer.xr.setSession(xrSession);
+  } catch (e) {
+    console.error('Failed to start AR', e);
+    alert('Failed to start AR. Check permissions and browser settings.');
+  }
+}
+
+const forceBtn = document.createElement('button');
+forceBtn.textContent = 'Enter AR (Quest)';
+Object.assign(forceBtn.style, {
+  position:'fixed', right:'12px', bottom:'12px', zIndex:9999,
+  background:'#16a34a', color:'#fff', border:'none', borderRadius:'10px',
+  padding:'10px 14px', fontSize:'14px', boxShadow:'0 2px 10px rgba(0,0,0,.3)', cursor:'pointer'
+});
+forceBtn.addEventListener('click', enterAR);
+document.body.appendChild(forceBtn);
+
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera();
 scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.0));
@@ -126,10 +153,17 @@ try {
 let refSpace = null, hitTestSource = null, placed = false;
 renderer.xr.addEventListener('sessionstart', async ()=> {
   const session = renderer.xr.getSession();
+  xrSession = session;
   const viewerSpace = await session.requestReferenceSpace('viewer');
   hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
   refSpace = await session.requestReferenceSpace('local');
   placed = false;
+  forceBtn.style.display = 'none';
+});
+renderer.xr.addEventListener('sessionend', ()=> {
+  xrSession = null;
+  placed = false;
+  forceBtn.style.display = '';
 });
 renderer.setAnimationLoop((t, frame)=>{
   if(!frame || !hitTestSource || placed) { renderer.render(scene, camera); return; }
@@ -205,7 +239,10 @@ async function fetchStates(){
 }
 function start(){ stop(); const sec=Math.max(3, Math.min(20, Number($poll.value||5))); timer=setInterval(fetchStates, sec*1000); fetchStates(); }
 function stop(){ if(timer) clearInterval(timer), timer=null; }
-$start.addEventListener('click', start);
+$start.addEventListener('click', async ()=>{
+  if (!renderer.xr.isPresenting) await enterAR();
+  start();
+});
 $stop.addEventListener('click', stop);
 
 // 初期: HND湾上を想定
