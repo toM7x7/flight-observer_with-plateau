@@ -106,6 +106,15 @@ const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
 renderer.xr.enabled = true;
 document.body.appendChild(renderer.domElement);
 
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 1000);
+function handleResize() {
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+}
+handleResize();
+window.addEventListener('resize', handleResize);
+
 const status = document.createElement('div');
 Object.assign(status.style, {
   position:'fixed', left:'12px', bottom:'12px', zIndex:9999,
@@ -146,7 +155,7 @@ async function enterAR() {
   let lastErr = null;
   for (const opts of OPTS_TRY) {
     try {
-      log('requestSession…');
+      log('requestSession...');
       const session = await navigator.xr.requestSession('immersive-ar', opts);
       xrSession = session;
       await renderer.xr.setSession(session);
@@ -157,7 +166,7 @@ async function enterAR() {
     }
   }
   if (!renderer.xr.isPresenting) {
-    alert('ARを開始できませんでした: ' + (lastErr?.message || lastErr || 'unknown'));
+    alert('Failed to start AR: ' + (lastErr?.message || lastErr || 'unknown'));
     return;
   }
 
@@ -201,7 +210,6 @@ $enterAR.addEventListener('click', async ()=>{
 document.body.appendChild(ARButton.createButton(renderer, { requiredFeatures:['hit-test'] }));
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera();
 scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.0));
 const key = new THREE.DirectionalLight(0xffffff, 0.8); key.position.set(1,2,1); scene.add(key);
 
@@ -222,9 +230,9 @@ renderer.setAnimationLoop((t, frame)=>{
       const pose = hits[0].getPose(refSpace);
       root.position.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
       root.quaternion.copy(pose.transform.orientation);
-      log('placing…');
+      log('placing...');
     } else {
-      log('no hit… (point to a surface)');
+      log('no hit... (point to a surface)');
     }
   }
   renderer.render(scene, camera);

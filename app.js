@@ -93,6 +93,13 @@ await loadPresets();
 
 // === UI操作 ============================================
 const areaSelect = document.getElementById('areaSelect');
+const openARBtn = document.getElementById('openARBtn');
+if (openARBtn) {
+  openARBtn.addEventListener('click', ()=>{
+    window.location.href = 'ar.html';
+  });
+}
+
 document.getElementById('goBtn')?.addEventListener('click', ()=>{
   const a = getSelectedArea(); flyToArea(a);
 });
