@@ -1,79 +1,92 @@
-# Flight Observer with PLATEAU ✈️
+# Flight Observer with PLATEAU
 
-**PLATEAU（3D都市）× OpenSky（航空機位置）** をブラウザで可視化。  
-- **Web 3D（Cesium）**：都市上空をリアルタイムに飛ぶ機体を表示  
-- **WebXR（Quest 3対応 AR/MR）**：卓上ミニチュア ⇄ 実寸大をスケール連続切替  
-- **Vercel** へそのままデプロイ可能（静的＋Serverless Functions）
+Browser tools for combining PLATEAU 3D city data with OpenSky traffic. The project ships with a Cesium web client, a Quest 3 WebXR scene, and Vercel-ready API routes.
 
 ---
 
-## デモ
+## Demo URLs
 - Web: `https://<your-app>.vercel.app/`
-- AR:  `https://<your-app>.vercel.app/ar.html` （Quest Browser / HTTPS）
+- AR:  `https://<your-app>.vercel.app/ar.html` (Quest Browser / HTTPS)
 
 ---
 
-## 使い方（Web）
+## Web Experience
+1. Choose an area (for example **HND Tokyo Bay Corridor**) from the toolbar.
+2. Press **Start** to begin polling (Poll(s) 5-10 seconds is a good default).
+3. Toggle **Buildings** to overlay PLATEAU 3D city tiles.
+4. Use **Find / Lat / Lon / W/H(km)** for custom bounding boxes and press **Use**.
 
-1. 画面上部の **Area** から「HND Tokyo Bay Corridor」などを選ぶ  
-2. **Start** で取得開始（**Poll(s)** は 5–10秒推奨）  
-3. **Buildings**（建物）をONにすると PLATEAU が重なります  
-4. **Find / Lat / Lon / W/H(km)** で自由にエリア指定、**Use** でジャンプ
-
-> 見えない時は **W/Hを広げる**、**海側へ寄せる**、**Hot** を使うと当たりやすいです。
-
----
-
-## 使い方（AR / Quest 3）
-
-1. Quest Browser で **`/ar.html`** を開く  
-2. 上部HUDの **Enter AR** を押す → カメラの前で**平面**（机・床）を向ける  
-3. コントローラ**トリガー**（または手の**ピンチ**）で**設置**  
-4. **Start** で機体表示、**Scale** スライダーで **1m=1km ⇄ 1m=1m** を連続調整
+Tip: If nothing shows up, widen W/H, shift the box slightly offshore, or use the Hot button (when `/api/hotcells` is enabled) to jump to active cells.
 
 ---
 
-## Vercel デプロイ
+## AR Experience (Quest 3)
+1. Open **`/ar.html`** in Quest Browser.
+2. Tap **Enter AR** on the HUD and aim at a desk or floor.
+3. Pull the controller trigger (or pinch) to place the miniature.
+4. Press **Start** to begin polling. The **Scale** slider switches between 1m = 1km and 1m = 1m.
 
+A status badge in the lower-left shows each step (`requestSession...`, `AR session started`, `placing...`).
+
+---
+
+## Repository Layout (Vercel Ready)
 ```
 repo-root/
-├─ index.html / app.js / styles.css / utils.js
-├─ ar.html / assets/mini_city.glb（任意）
-├─ tiles/plateau/tileset.json（任意：ローカルPLATEAU）
-└─ api/
-   ├─ opensky.js     # /api/opensky?lamin&lomin&lamax&lomax
-   ├─ states.js      # opensky.jsのエイリアス
-   ├─ presets.js     # よく飛ぶエリアのプリセット
-   ├─ config.js      # Ion/モードなど最小設定
-   └─ hotcells.js    # 任意：広域ヒートマップ
+|-- index.html / app.js / styles.css / utils.js
+|-- ar.html / assets/mini_city.glb            # optional miniature terrain
+|-- tiles/plateau/tileset.json                # optional local 3D Tiles
+`-- api/
+    |-- opensky.js     # /api/opensky?lamin&lomin&lamax&lomax
+    |-- states.js      # alias of opensky.js
+    |-- presets.js     # preset bounding boxes
+    |-- config.js      # minimal config endpoint
+    `-- hotcells.js    # optional heat-map aggregates
 ```
 
-- **Framework preset**: Other  
-- **Build Command / Output**: なし（静的）  
-- **Environment Variables**（必要に応じて）
+Vercel settings:
+- **Framework preset**: Other
+- **Build Command / Output**: empty (static)
+- **Environment Variables** (set as needed)
   - `OPEN_SKY_MODE=opensky`
-  - `OPEN_SKY_USERNAME` / `OPEN_SKY_PASSWORD`（任意）
-  - `ION_TOKEN` / `ION_ASSET_ID`（Cesium ionを使う場合）
+  - `OPEN_SKY_USERNAME` / `OPEN_SKY_PASSWORD` (recommended for higher OpenSky quota)
+  - `ION_TOKEN` / `ION_ASSET_ID` (if using Cesium ion)
+
+`vercel.json` ships with `Cache-Control: no-store` and `Permissions-Policy: xr-spatial-tracking=(self)`.
 
 ---
 
-## PLATEAU（3D都市）の表示
-
-- **Cesium ion** の *Japan 3D Buildings* を使う（推奨）  
-  - `ION_TOKEN`, `ION_ASSET_ID` を環境変数で設定  
-- **ローカル 3D Tiles** を配信  
-  - `tiles/plateau/tileset.json` を設置（Webでは自動検出）
+## PLATEAU Integration
+- **Cesium ion (recommended)**: use *Japan 3D Buildings*, then set `ION_TOKEN` and `ION_ASSET_ID`.
+- **Local 3D Tiles**: drop files under `/tiles/plateau/tileset.json`; the client auto-detects availability.
 
 ---
 
-## 既知の注意点
+## Troubleshooting
+### `/api/opensky` returns 500
+- Check Vercel function logs. The hardened handler now echoes upstream `status` and the first 200 bytes of the response.
+- `401/403`: credentials missing or invalid - update `OPEN_SKY_USERNAME/PASSWORD`.
+- `429`: rate limited - increase Poll(s) to 10-15 seconds and trim the bounding box.
+- `5xx` or HTML body: upstream outage - wait a bit or jump to another cell via Hot.
 
-- OpenSkyはボランティア受信網のため、**エリアや時間帯**によっては `states: []` になる場合があります  
-  - **Poll間隔を長めに**、**箱を広く/海側に寄せる**、**Hot** を使う  
-  - 429（レート制限）は Poll を **10–15s** に  
-- WebXRはHTTPS必須・Quest Browser推奨。AR開始は**ユーザー操作**（Enter AR）でのみ可能
+### AR will not start / black view
+- Console shows `Failed to resolve module specifier "three"` - confirm the import map in `ar.html`.
+- Status badge says `immersive-ar not supported` - use Quest Browser or another WebXR AR capable browser.
+- Status stays on `no hit...` - ensure a well-lit surface and remember placement happens on WebXR `select` events only.
+
+### No aircraft visible
+1. Verify `https://<app>.vercel.app/api/presets` returns 200 with your presets.
+2. Hit `https://<app>.vercel.app/api/opensky?...` directly; inspect the JSON or upstream error.
+3. Increase Poll(s), widen the area, or use `/api/hotcells` to locate active cells.
 
 ---
 
-## ライセンス
+## Known Work Items
+- Surface `/api/hotcells` results directly in both Web and AR UIs.
+- Expose callsign, altitude, and speed overlays in the AR HUD.
+- Explore VR/other-headset fallbacks alongside Quest 3 AR.
+
+---
+
+## License
 MIT
