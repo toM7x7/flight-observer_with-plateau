@@ -104,79 +104,136 @@ const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
 renderer.xr.enabled = true;
 document.body.appendChild(renderer.domElement);
 
-const sessionInit = { requiredFeatures:['hit-test'], optionalFeatures:['dom-overlay','hand-tracking','layers'], domOverlay:{ root: document.getElementById('hud') } };
-document.body.appendChild(ARButton.createButton(renderer, sessionInit));
+const status = document.createElement('div');
+Object.assign(status.style, {
+  position:'fixed', left:'12px', bottom:'12px', zIndex:9999,
+  background:'rgba(0,0,0,.55)', color:'#e5e7eb', padding:'6px 8px',
+  borderRadius:'8px', fontSize:'12px', fontFamily:'system-ui, sans-serif'
+});
+status.textContent = 'Ready';
+document.body.appendChild(status);
+const log = (msg) => { status.textContent = msg; console.log('[AR]', msg); };
+
+const hud = document.getElementById('hud');
+const OPTS_TRY = [
+  { requiredFeatures:['hit-test'], optionalFeatures:['dom-overlay','hand-tracking'], domOverlay:{ root: hud } },
+  { requiredFeatures:['hit-test'], optionalFeatures:[] },
+  { requiredFeatures:[], optionalFeatures:[] }
+];
 
 let xrSession = null;
+let refSpace = null;
+let hitTestSource = null;
+let placed = false;
+
 async function enterAR() {
+  if (!navigator.xr) { alert('WebXR not available on this browser'); return; }
+  if (renderer.xr.isPresenting) return;
+
   try {
-    if (!navigator.xr) {
-      alert('WebXR not available on this browser');
+    const supported = await navigator.xr.isSessionSupported?.('immersive-ar');
+    if (supported === false) {
+      alert('immersive-ar is not supported on this browser');
       return;
     }
-    if (renderer.xr.isPresenting) return;
-    xrSession = await navigator.xr.requestSession('immersive-ar', sessionInit);
-    xrSession.addEventListener('end', () => { xrSession = null; });
-    await renderer.xr.setSession(xrSession);
-  } catch (e) {
-    console.error('Failed to start AR', e);
-    alert('Failed to start AR. Check permissions and browser settings.');
+  } catch (err) {
+    console.warn('isSessionSupported check failed', err);
+  }
+
+  let lastError = null;
+  for (const opts of OPTS_TRY) {
+    try {
+      log('requestSession...');
+      const session = await navigator.xr.requestSession('immersive-ar', opts);
+      xrSession = session;
+      await renderer.xr.setSession(session);
+      log('AR session started');
+      break;
+    } catch (err) {
+      lastError = err;
+      console.warn('requestSession failed', opts, err);
+    }
+  }
+
+  if (!xrSession) {
+    alert('Could not start AR: ' + (lastError?.message || lastError || 'unknown error'));
+    return;
+  }
+
+  try {
+    const session = xrSession;
+    const viewerSpace = await session.requestReferenceSpace('viewer');
+    refSpace = await session.requestReferenceSpace('local');
+    hitTestSource = await session.requestHitTestSource({ space: viewerSpace }).catch(() => null);
+    placed = false;
+
+    session.addEventListener('select', () => {
+      placed = true;
+      log('Placed. Tap Start to poll.');
+    });
+
+    session.addEventListener('end', () => {
+      xrSession = null;
+      refSpace = null;
+      hitTestSource = null;
+      placed = false;
+      forceBtn.style.display = '';
+      log('Session ended');
+    });
+
+    forceBtn.style.display = 'none';
+  } catch (err) {
+    console.warn('Failed to configure hit-test', err);
   }
 }
 
 const forceBtn = document.createElement('button');
 forceBtn.textContent = 'Enter AR (Quest)';
 Object.assign(forceBtn.style, {
-  position:'fixed', right:'12px', bottom:'12px', zIndex:9999,
+  position:'fixed', right:'12px', bottom:'12px', zIndex:9998,
   background:'#16a34a', color:'#fff', border:'none', borderRadius:'10px',
   padding:'10px 14px', fontSize:'14px', boxShadow:'0 2px 10px rgba(0,0,0,.3)', cursor:'pointer'
 });
 forceBtn.addEventListener('click', enterAR);
 document.body.appendChild(forceBtn);
 
+document.body.appendChild(ARButton.createButton(renderer, { requiredFeatures:['hit-test'] }));
+
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera();
 scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.0));
 const key = new THREE.DirectionalLight(0xffffff, 0.8); key.position.set(1,2,1); scene.add(key);
 
-// 置き場所（アンカー）とミニチュア
 const root = new THREE.Group(); scene.add(root);
 const grid = new THREE.GridHelper(2, 20, 0x66ccff, 0x224466); grid.position.y = 0.002; root.add(grid);
 
-// 任意：軽量ミニ都市（あれば）
 try {
   const gltf = await new GLTFLoader().loadAsync('/assets/mini_city.glb');
   gltf.scene.scale.setScalar(1); root.add(gltf.scene);
-} catch(e){ console.log('mini_city.glb not found: grid only'); }
+} catch (err) {
+  console.log('mini_city.glb not found: grid only');
+}
 
-// ---- AR hit-test placement ----
-let refSpace = null, hitTestSource = null, placed = false;
-renderer.xr.addEventListener('sessionstart', async ()=> {
-  const session = renderer.xr.getSession();
-  xrSession = session;
-  const viewerSpace = await session.requestReferenceSpace('viewer');
-  hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
-  refSpace = await session.requestReferenceSpace('local');
-  placed = false;
-  forceBtn.style.display = 'none';
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && xrSession) {
+    xrSession.end().catch(() => {});
+  }
 });
-renderer.xr.addEventListener('sessionend', ()=> {
-  xrSession = null;
-  placed = false;
-  forceBtn.style.display = '';
-});
-renderer.setAnimationLoop((t, frame)=>{
-  if(!frame || !hitTestSource || placed) { renderer.render(scene, camera); return; }
-  const hits = frame.getHitTestResults(hitTestSource);
-  if(hits.length){ // テーブルなどに吸着
-    const pose = hits[0].getPose(refSpace);
-    root.position.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
-    root.quaternion.copy(pose.transform.orientation);
+
+renderer.setAnimationLoop((time, frame) => {
+  if (renderer.xr.isPresenting && frame && hitTestSource && !placed && refSpace) {
+    const hits = frame.getHitTestResults(hitTestSource);
+    if (hits.length) {
+      const pose = hits[0].getPose(refSpace);
+      root.position.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
+      root.quaternion.copy(pose.transform.orientation);
+      log('Move device / pull trigger to place');
+    } else {
+      log('Looking for surface...');
+    }
   }
   renderer.render(scene, camera);
 });
-// タップで固定
-window.addEventListener('click', ()=>{ placed = true; });
 
 // ---- Presets ----
 async function loadPresets(){
@@ -237,8 +294,20 @@ async function fetchStates(){
   }
   gcPlanes(seen);
 }
-function start(){ stop(); const sec=Math.max(3, Math.min(20, Number($poll.value||5))); timer=setInterval(fetchStates, sec*1000); fetchStates(); }
-function stop(){ if(timer) clearInterval(timer), timer=null; }
+function start(){
+  stop();
+  const sec = Math.max(3, Math.min(20, Number($poll.value||5)));
+  log(`Polling every ${sec}s`);
+  timer = setInterval(fetchStates, sec*1000);
+  fetchStates();
+}
+function stop(){
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+    log('Polling stopped');
+  }
+}
 $start.addEventListener('click', async ()=>{
   if (!renderer.xr.isPresenting) await enterAR();
   start();
@@ -251,3 +320,4 @@ flyToArea({ lamin:35.50, lamax:35.63, lomin:139.74, lomax:139.90 });
 </script>
 </body>
 </html>
+
