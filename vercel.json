@@ -9,9 +9,9 @@
       ]
     }
   ],
+  "regions": ["cdg1", "fra1", "dub1"],
   "functions": {
     "api/*.js": {
-      "regions": ["cdg1", "fra1", "dub1"],
       "maxDuration": 10,
       "memory": 1024
     }
