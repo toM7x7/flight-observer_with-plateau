@@ -8,5 +8,12 @@
         { "key": "Permissions-Policy", "value": "xr-spatial-tracking=(self)" }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/*.js": {
+      "regions": ["cdg1", "fra1", "dub1"],
+      "maxDuration": 10,
+      "memory": 1024
+    }
+  }
 }

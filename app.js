@@ -324,23 +324,39 @@ function stopPolling() {
 async function fetchAndUpdate() {
   if (!currentBBox) return;
 
-  // API名の違いにフォールバック対応
   const qs = new URLSearchParams(currentBBox).toString();
-  let r = await fetch(`${API_BASE}/api/opensky?${qs}`);
-  if (!r.ok) r = await fetch(`${API_BASE}/api/states?${qs}`);
-  if (!r.ok) { console.warn('states API error', r.status); return; }
+  let response = await fetch(`${API_BASE}/api/opensky?${qs}`);
+  if (!response.ok) response = await fetch(`${API_BASE}/api/states?${qs}`);
+  if (!response.ok) { console.warn('states API error', response.status); return; }
 
-  const data = await r.json();
-  const t = Cesium.JulianDate.fromDate(new Date((data.time||Date.now()/1000)*1000));
+  let payload;
+  try {
+    payload = await response.json();
+  } catch (err) {
+    console.warn('states parse error', err);
+    return;
+  }
+
+  const dataset = payload && typeof payload === 'object' && payload.data ? payload.data : payload;
+  if (!dataset || typeof dataset !== 'object') {
+    console.warn('states payload missing');
+    return;
+  }
+
+  if (payload && payload.fallback) {
+    console.warn('Using fallback snapshot', payload.error || '');
+  }
+
+  const t = Cesium.JulianDate.fromDate(new Date(((dataset.time ?? Date.now() / 1000)) * 1000));
 
   const useModel   = document.getElementById('useModel')?.checked ?? false;
   const showTrails = document.getElementById('showTrails')?.checked ?? true;
 
   const seen = new Set();
 
-  for (const s of (data.states||[])) {
+  for (const s of (dataset.states || [])) {
     const icao24   = s[0];
-    const callsign = (s[1] || '').trim(); // 便名
+    const callsign = (s[1] || '').trim();
     const lon      = s[5], lat = s[6];
     const baroAlt  = s[7];
     const onGround = s[8];
@@ -350,7 +366,7 @@ async function fetchAndUpdate() {
     if (lat == null || lon == null) continue;
 
     const alt = (geoAlt ?? baroAlt ?? 0);
-    const h   = Math.max(alt, onGround ? 0 : 30); // 地面刺さり回避
+    const h   = Math.max(alt, onGround ? 0 : 30);
     const p   = Cesium.Cartesian3.fromDegrees(lon, lat, h);
     const labelTxt = callsign || (icao24 ? icao24.toUpperCase() : '');
 
@@ -368,7 +384,6 @@ async function fetchAndUpdate() {
       rec.last = t;
     }
 
-    // billboard のときは true_track で機首向き補助（モデルは VelocityOrientation が効く）
     if (track != null && rec.entity.billboard) {
       rec.entity.billboard.rotation = Cesium.Math.toRadians(track);
     }
@@ -376,7 +391,6 @@ async function fetchAndUpdate() {
     seen.add(icao24);
   }
 
-  // 古い機体の掃除
   const cleanupSec = (window.FLIGHT3D_CONFIG?.cleanupSeconds || 60);
   for (const [id, rec] of aircraft) {
     const dt = Cesium.JulianDate.secondsDifference(t, rec.last);
@@ -386,6 +400,4 @@ async function fetchAndUpdate() {
     }
   }
 }
-
-// 自動開始
 startPolling();

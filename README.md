@@ -36,7 +36,8 @@ repo-root/
 |-- index.html / app.js / styles.css / utils.js
 |-- ar.html / assets/mini_city.glb            # optional miniature terrain
 |-- tiles/plateau/tileset.json                # optional local 3D Tiles
-`-- api/
+|-- sample/states_hnd.json          # fallback snapshot used when upstream is down
+|-- api/
     |-- opensky.js     # /api/opensky?lamin&lomin&lamax&lomax
     |-- states.js      # alias of opensky.js
     |-- presets.js     # preset bounding boxes
@@ -63,8 +64,8 @@ Vercel settings:
 ---
 
 ## Troubleshooting
-### `/api/opensky` returns 500
-- Check Vercel function logs. The hardened handler now echoes upstream `status` and the first 200 bytes of the response.
+### `/api/opensky` returns non-200
+- Inspect Vercel function logs. The handler echoes upstream status and the first portion of the body so you can see the failure reason.
 - `401/403`: credentials missing or invalid - update `OPEN_SKY_USERNAME/PASSWORD`.
 - `429`: rate limited - increase Poll(s) to 10-15 seconds and trim the bounding box.
 - `5xx` or HTML body: upstream outage - wait a bit or jump to another cell via Hot.
@@ -75,6 +76,7 @@ Vercel settings:
 - Status stays on `no hit...` - ensure a well-lit surface and remember placement happens on WebXR `select` events only.
 
 ### No aircraft visible
+- If the API response has fallback: true, the bundled snapshot is being shown because OpenSky could not be reached. Reduce polling frequency or move the bounding box and check the logs.
 1. Verify `https://<app>.vercel.app/api/presets` returns 200 with your presets.
 2. Hit `https://<app>.vercel.app/api/opensky?...` directly; inspect the JSON or upstream error.
 3. Increase Poll(s), widen the area, or use `/api/hotcells` to locate active cells.

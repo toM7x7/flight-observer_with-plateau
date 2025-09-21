@@ -295,15 +295,42 @@ let timer=null;
 async function fetchStates(){
   if(!currentBBox) return;
   const qs=new URLSearchParams(currentBBox).toString();
-  let r=await fetch(`${API_BASE}/api/opensky?${qs}`); if(!r.ok) r=await fetch(`${API_BASE}/api/states?${qs}`);
-  if(!r.ok) return;
-  const data=await r.json();
-  const seen=new Set();
-  for(const s of (data.states||[])){
-    const id=s[0], lon=s[5], lat=s[6]; if(lon==null||lat==null) continue;
-    setPlane(id, lon, lat); seen.add(id);
+  let response = await fetch(`${API_BASE}/api/opensky?${qs}`);
+  if(!response.ok) response = await fetch(`${API_BASE}/api/states?${qs}`);
+  if(!response.ok) {
+    log(`states API ${response.status}`);
+    return;
+  }
+
+  let payload;
+  try {
+    payload = await response.json();
+  } catch (err) {
+    log('states parse error');
+    console.warn('states parse error', err);
+    return;
+  }
+
+  const dataset = payload && typeof payload === 'object' && payload.data ? payload.data : payload;
+  if (!dataset || typeof dataset !== 'object') {
+    log('states payload missing');
+    return;
+  }
+
+  if (payload && payload.fallback) {
+    log('Using fallback snapshot');
+  }
+
+  const states = Array.isArray(dataset.states) ? dataset.states : [];
+  const seen = new Set();
+  for (const s of states) {
+    const id=s[0], lon=s[5], lat=s[6];
+    if(lon==null||lat==null) continue;
+    setPlane(id, lon, lat);
+    seen.add(id);
   }
   gcPlanes(seen);
+  log(`planes: ${seen.size}${payload && payload.fallback ? ' (fallback)' : ''}`);
 }
 function start(){
   stop();
